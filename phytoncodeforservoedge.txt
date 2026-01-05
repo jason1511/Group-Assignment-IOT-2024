@@ -1,0 +1,43 @@
+import serial
+import time
+import paho.mqtt.client as mqtt
+
+# MQTT settings
+MQTT_BROKER = "192.168.227.54"
+MQTT_PORT = 1883
+MQTT_TOPIC_ULTRASONIC = "sensor/ultrasonic"
+
+# Serial settings
+SERIAL_PORT_ULTRASONIC = "/dev/ttyS0"  # Adjust according to your setup
+BAUD_RATE = 9600
+
+def on_connect(client, userdata, flags, rc):
+	print("Connected to MQTT broker with code: " + str(rc))
+
+# Initialize MQTT client
+mqtt_client = mqtt.Client()
+mqtt_client.on_connect = on_connect
+mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+mqtt_client.loop_start()
+
+# Initialize serial connection
+ser_ultrasonic = serial.Serial(SERIAL_PORT_ULTRASONIC, BAUD_RATE, timeout=1)
+
+try:
+    while True:
+        if ser_ultrasonic.in_waiting > 0:
+            line = ser_ultrasonic.readline().decode('utf-8').rstrip()
+            if "Object detected for" in line:
+                print("Publishing ultrasonic data to MQTT: " + line)
+                mqtt_client.publish(MQTT_TOPIC_ULTRASONIC, line)
+                time.sleep(0.1)
+
+except KeyboardInterrupt:
+    print("Exiting program")
+finally:
+    ser_ultrasonic.close()
+    mqtt_client.loop_stop()
+    mqtt_client.disconnect()
+
+
+

@@ -1,0 +1,91 @@
+import paho.mqtt.client as mqtt
+import pymysql
+from datetime import datetime
+import threading
+
+# Database connection
+db_conn = pymysql.connect(
+	host='localhost',
+	user='jason',
+	password='',
+	database='motion_db'
+)
+cursor = db_conn.cursor()
+
+# Callback for client1 connection
+def on_connect1(client, userdata, flags, rc):
+	print(f"Client1 connected with result code {rc}")
+	client.subscribe("sensor/ultrasonic")
+
+# Callback for client2 connection
+def on_connect2(client, userdata, flags, rc):
+	print(f"Client2 connected with result code {rc}")
+	client.subscribe("sensor/ir")
+
+# Callback for messages received by client1
+def on_message1(client, userdata, msg):
+        distance = msg.payload.decode()
+        timestamp = datetime.now()  # Record the current time
+        cursor.execute(
+            "INSERT INTO sensor_data (timestamp, ultrasonic_distance) VALUES (%s, %s) ON DUPLICATE KEY UPDATE ultrasonic_distance = %s",
+            (timestamp, distance, distance)
+            )
+        db_conn.commit()
+        print(f"Inserted ultrasonic distance: {distance} cm")
+
+# Callback for messages received by client2
+def on_message2(client, userdata, msg):
+    	ir_value = msg.payload.decode()
+    	timestamp = datetime.now()  # Record the current time
+    	cursor.execute(
+        	"INSERT INTO sensor_data (timestamp, ir_value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE ir_value = %s",
+        	(timestamp, ir_value, ir_value)
+    	)
+    	db_conn.commit()
+    	print(f"Inserted IR value: {ir_value}")
+    	
+
+# Initialize and configure client1
+client1 = mqtt.Client()
+client1.on_connect = on_connect1
+client1.on_message = on_message1
+
+# Initialize and configure client2
+client2 = mqtt.Client()
+client2.on_connect = on_connect2
+client2.on_message = on_message2
+
+# Broker details
+broker_address1 = "192.168.227.54"
+broker_port1 = 1883
+broker_address2 = "192.168.227.176"
+broker_port2 = 1883
+
+# Connect clients
+client1.connect(broker_address1, broker_port1, 60)
+client2.connect(broker_address2, broker_port2, 60)
+
+# Start the loop for both clients
+def start_client1():
+    client1.loop_forever()
+
+def start_client2():
+    client2.loop_forever()
+    
+thread1 = threading.Thread(target=start_client1) 
+thread2 = threading.Thread(target=start_client2)
+
+thread1.start() 
+thread2.start() 
+
+try:
+    thread1.join()
+    thread2.join()
+except KeyboardInterrupt:
+    print("exit")
+finally:
+    cursor.close()
+    db_conn.close()
+
+
+

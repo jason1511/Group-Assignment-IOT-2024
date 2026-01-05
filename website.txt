@@ -1,0 +1,76 @@
+from flask import Flask, render_template
+import pymysql
+import serial
+from datetime import datetime
+
+app = Flask(__name__)
+
+# Define pins
+pins = {
+    6: {'name': 'Motion Sensor', 'state': 0},
+    9: {'name': 'Servo Motor', 'state': 0}
+}
+
+# Setup database connection
+db_conn = pymysql.connect(host='localhost', user='user', password='user', database='motion_db')
+cursor = db_conn.cursor()
+
+@app.route('/')
+def index():
+# Fetch motion detection logs from the database
+    cursor.execute("SELECT * FROM motion_logs")
+    motion_logs = cursor.fetchall()
+
+# Prepare HTML to display motion detection logs
+    motion_logs_html = "<h1>Motion Detection Logs</h1>"
+    motion_logs_html += "<ul>"
+    for log in motion_logs:
+        motion_logs_html += f"<li>{log[1]}</li>"  # Assuming 'detection_time' is the second column
+        motion_logs_html += "</ul>"
+
+    templateData = {
+        'pins': pins,
+        'motion_logs': motion_logs_html
+    }
+    return render_template('index.html', **templateData)
+
+@app.route("/<changePin>/<toggle>")
+def toggle_function(changePin, toggle):
+    changePin = int(changePin)
+    deviceName = pins[changePin]['name']
+    ser = serial.Serial('/dev/ttyS0', 9600, timeout=1)
+    ser.flush()
+
+    if toggle == "on":
+        if changePin == 9:  # Servo Motor
+            # Send command to rotate the servo motor to 90 degrees
+            ser.write(b'90\n')  # Assuming '90' is the command to move to 90 degrees
+            pins[changePin]['state'] = 1
+            message = "Turned " + deviceName + " on and moved to 90 degrees."
+        else:
+            ser.write(f"{changePin}\n".encode('utf-8'))  # Send command with a newline character
+            pins[changePin]['state'] = 1
+            message = "Turned " + deviceName + " on."
+    elif toggle == "off":
+        if changePin == 6:  # Servo Motor
+            # Send command to stop the servo motor
+            ser.write(b'0\n')  # Assuming '0' is the command to stop
+            pins[changePin]['state'] = 0
+            message = "Turned " + deviceName + " off."
+        else:
+            ser.write(f"{changePin + 10}\n".encode('utf-8'))  # Send command with a newline character
+            pins[changePin]['state'] = 0
+            message = "Turned " + deviceName + " off."
+
+    templateData = {
+        'pins': pins
+    }
+    return render_template('index.html', **templateData)
+
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=8080)
+
+
+
